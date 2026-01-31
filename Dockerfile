@@ -146,7 +146,7 @@ RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools \
     && unzip -q /tmp/cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools \
     && mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest \
     && rm /tmp/cmdline-tools.zip \
-    && yes | sdkmanager --licenses \
+    && (yes || true) | sdkmanager --licenses \
     && sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
     && chown -R 1000:1000 $ANDROID_SDK_ROOT
 
