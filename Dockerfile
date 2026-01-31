@@ -92,10 +92,12 @@ ENV RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo
 ENV PATH=/opt/cargo/bin:$PATH
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh \
-    && echo "be3535b3033ff5e0ecc4d589a35d3571f4c24e9571f2e66e87e82774a5a72717  /tmp/rustup-init.sh" | sha256sum -c - \
-    && sh /tmp/rustup-init.sh -y --default-toolchain stable \
-    && rm /tmp/rustup-init.sh \
+ARG RUSTUP_SHA256=20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c
+RUN curl --proto '=https' --tlsv1.2 -sSf https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init -o /tmp/rustup-init \
+    && echo "${RUSTUP_SHA256}  /tmp/rustup-init" | sha256sum -c - \
+    && chmod +x /tmp/rustup-init \
+    && /tmp/rustup-init -y --default-toolchain stable \
+    && rm /tmp/rustup-init \
     && chown -R 1000:1000 $RUSTUP_HOME $CARGO_HOME
 
 # ============================================
