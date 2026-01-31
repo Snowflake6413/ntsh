@@ -1,11 +1,14 @@
 # ============================================
-# Totally not sus at all
+# Nothing sus at all
 # ============================================
-FROM kasmweb/core-ubuntu-noble:1.18.0
+FROM kasmweb/core-ubuntu-noble:1.18.0@sha256:688b454c7d6d16a20afc18497cfca3e9963be2c4e8167c29b6ced2f1252b6fa6
+
+# Use safe shell for all RUN commands
+SHELL ["/bin/bash", "-o", "errexit", "-o", "nounset", "-o", "pipefail", "-c"]
 
 LABEL maintainer="Anon Anon <nothing@toseehere.com>"
-LABEL description="Nothing see to here :3"
-LABEL version="1.0.0"
+LABEL description="Nothing to see I swear :3"
+LABEL version="1.1.0"
 
 USER root
 
@@ -17,172 +20,152 @@ ENV HOME=/home/kasm-default-profile \
 
 WORKDIR $HOME
 
-# Ensure default profile directory exists
 RUN mkdir -p /home/kasm-default-profile && chown 1000:1000 /home/kasm-default-profile
 
 # ============================================
 # System packages, build essentials, and runtime libraries
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Build essentials
     build-essential gcc g++ make cmake \
-    # Utilities
     curl wget jq tree unzip zip \
     ca-certificates gnupg lsb-release apt-transport-https software-properties-common \
-    # Development libraries
     libssl-dev pkg-config sqlite3 libsqlite3-dev redis-tools \
-    # Git
     git git-lfs \
-    # Runtime libraries for Electron/Qt apps
     libgbm1 libnss3 libasound2t64 libxss1 libatk-bridge2.0-0 libgtk-3-0 \
     libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-keysyms1 \
     libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xinput0 \
     libgl1 libegl1 libopengl0 mesa-utils xdg-utils dbus-x11 \
-    # Python
     python3 python3-pip python3-venv python3-dev \
-    # Java
     openjdk-21-jdk \
-    && git lfs install \
+    && git lfs install --system \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Firefox
+# Firefox (from Ubuntu repos - more secure than PPA)
 # ============================================
-RUN if [ -f "$INST_SCRIPTS/firefox/install_firefox.sh" ]; then \
-        bash $INST_SCRIPTS/firefox/install_firefox.sh; \
-    else \
-        add-apt-repository -y ppa:mozillateam/ppa \
-        && echo 'Package: *\nPin: release o=LP-PPA-mozillateam\nPin-Priority: 1001' > /etc/apt/preferences.d/mozilla-firefox \
-        && apt-get update && apt-get install -y --no-install-recommends firefox \
-        && rm -rf /var/lib/apt/lists/*; \
-    fi
+RUN apt-get update && apt-get install -y --no-install-recommends firefox \
+    && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Google Chrome
+# Google Chrome (with sandbox preserved)
 # ============================================
-RUN if [ -f "$INST_SCRIPTS/chrome/install_chrome.sh" ]; then \
-        bash $INST_SCRIPTS/chrome/install_chrome.sh; \
-    else \
-        wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb \
-        && apt-get update && apt-get install -y /tmp/chrome.deb \
-        && rm /tmp/chrome.deb && rm -rf /var/lib/apt/lists/*; \
-    fi \
-    && sed -i 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/bin/google-chrome-stable --no-sandbox|g' /usr/share/applications/google-chrome.desktop || true
+# NOTE: Chrome sandbox works best with user namespaces enabled on host.
+# Avoid --cap-add=SYS_ADMIN as it grants excessive privileges.
+# If sandbox issues occur, use --security-opt seccomp=chrome.json
+RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb \
+    && apt-get update && apt-get install -y --no-install-recommends /tmp/chrome.deb \
+    && rm /tmp/chrome.deb && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# VS Code
+# VS Code (sandbox preserved)
 # ============================================
-RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/packages.microsoft.gpg \
+RUN install -d -m 0755 /usr/share/keyrings \
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/packages.microsoft.gpg \
+    && chmod 0644 /usr/share/keyrings/packages.microsoft.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list \
-    && apt-get update && apt-get install -y code \
-    && rm -rf /var/lib/apt/lists/* \
-    && cat > /usr/local/bin/code-container << 'EOF'
-#!/bin/bash
-exec /usr/share/code/code --no-sandbox --disable-dev-shm-usage "$@"
-EOF
-RUN chmod +x /usr/local/bin/code-container \
-    && sed -i 's|Exec=/usr/share/code/code|Exec=/usr/local/bin/code-container|g' /usr/share/applications/code.desktop \
-    && sed -i 's|Exec=/usr/share/code/code|Exec=/usr/local/bin/code-container|g' /usr/share/applications/code-url-handler.desktop || true
+    && apt-get update && apt-get install -y --no-install-recommends code \
+    && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Node.js LTS with npm, yarn, pnpm
+# Node.js LTS (using apt repo instead of curl|bash)
 # ============================================
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - \
-    && apt-get install -y nodejs \
+RUN mkdir -p /usr/share/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update && apt-get install -y nodejs \
     && npm install -g yarn pnpm \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Python virtual environment with common packages
+# Python virtual environment (pinned versions)
 # ============================================
 RUN python3 -m venv /opt/reviewer-venv \
     && /opt/reviewer-venv/bin/pip install --no-cache-dir \
-        requests flask discord.py httpx python-dotenv virtualenv
+        requests==2.32.3 flask==3.1.0 discord.py==2.5.2 httpx==0.28.1 python-dotenv==1.1.0 virtualenv==20.29.3
 
 ENV PATH="/opt/reviewer-venv/bin:$PATH"
 
 # ============================================
-# Rust toolchain
+# Rust toolchain (with checksum verification)
 # ============================================
 ENV RUSTUP_HOME=/opt/rustup \
     CARGO_HOME=/opt/cargo
 ENV PATH=/opt/cargo/bin:$PATH
 
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable \
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh \
+    && echo "be3535b3033ff5e0ecc4d589a35d3571f4c24e9571f2e66e87e82774a5a72717  /tmp/rustup-init.sh" | sha256sum -c - \
+    && sh /tmp/rustup-init.sh -y --default-toolchain stable \
+    && rm /tmp/rustup-init.sh \
     && chown -R 1000:1000 $RUSTUP_HOME $CARGO_HOME
 
 # ============================================
-# Java environment and Gradle 8.10.2
+# Java environment and Gradle 8.10.2 (with checksum)
 # ============================================
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+ARG GRADLE_VERSION=8.10.2
+ARG GRADLE_SHA256=31c55713e40233a8303827ceb42ca48a47267a0ad4bab9177123121e71524c26
 
-RUN wget -q https://services.gradle.org/distributions/gradle-8.10.2-bin.zip -O /tmp/gradle.zip \
+RUN wget -q https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip -O /tmp/gradle.zip \
+    && echo "${GRADLE_SHA256}  /tmp/gradle.zip" | sha256sum -c - \
     && unzip -q /tmp/gradle.zip -d /opt \
-    && ln -s /opt/gradle-8.10.2 /opt/gradle \
+    && ln -s /opt/gradle-${GRADLE_VERSION} /opt/gradle \
     && rm /tmp/gradle.zip
 
 ENV GRADLE_HOME=/opt/gradle
 ENV PATH=$GRADLE_HOME/bin:$PATH
 
 # ============================================
-# Go 1.24.4
+# Go 1.24.12 (with checksum from go.dev/dl)
 # ============================================
-RUN wget -q https://go.dev/dl/go1.24.4.linux-amd64.tar.gz -O /tmp/go.tar.gz \
+ARG GO_VERSION=1.24.12
+ARG GO_SHA256=bddf8e653c82429aea7aec2520774e79925d4bb929fe20e67ecc00dd5af44c50
+
+RUN wget -q https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -O /tmp/go.tar.gz \
+    && echo "${GO_SHA256}  /tmp/go.tar.gz" | sha256sum -c - \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz \
     && mkdir -p /home/kasm-default-profile/go && chown 1000:1000 /home/kasm-default-profile/go
 
 ENV PATH=/usr/local/go/bin:$PATH
 
-# ============================================
-# Docker CLI (no daemon - use host socket mount)
-# ============================================
-RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list \
-    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
-    && rm -rf /var/lib/apt/lists/*
+
 
 # ============================================
-# Android SDK
+# Android SDK (with checksum verification)
 # ============================================
 ENV ANDROID_SDK_ROOT=/opt/android-sdk \
     ANDROID_HOME=/opt/android-sdk
 ENV PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH
+ARG ANDROID_CMDLINE_SHA256=2d2d50857e4eb553af5a6dc3ad507a17adf43d115264b1afc116f95c92e5e258
 
 RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools \
     && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip \
+    && echo "${ANDROID_CMDLINE_SHA256}  /tmp/cmdline-tools.zip" | sha256sum -c - \
     && unzip -q /tmp/cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools \
     && mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest \
     && rm /tmp/cmdline-tools.zip \
-    && yes | sdkmanager --licenses || true \
+    && yes | sdkmanager --licenses \
     && sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
     && chown -R 1000:1000 $ANDROID_SDK_ROOT
 
 # ============================================
-# Insomnia 10.3.1
+# Insomnia 10.3.1 (sandbox preserved)
+# NOTE: Kong/Insomnia does not publish SHA256 checksums for releases.
+# Consider verifying the download manually or using a mirror with checksums.
 # ============================================
-RUN wget -qL https://github.com/Kong/insomnia/releases/download/core%4010.3.1/Insomnia.Core-10.3.1.deb -O /tmp/insomnia.deb \
-    && apt-get update && apt-get install -y /tmp/insomnia.deb \
-    && rm /tmp/insomnia.deb && rm -rf /var/lib/apt/lists/* \
-    && cat > /usr/local/bin/insomnia-container << 'EOF'
-#!/bin/bash
-exec /usr/bin/insomnia --no-sandbox --disable-dev-shm-usage --disable-gpu "$@"
-EOF
-RUN chmod +x /usr/local/bin/insomnia-container \
-    && sed -i 's|^Exec=.*|Exec=/usr/local/bin/insomnia-container|g' /usr/share/applications/insomnia.desktop || true
+ARG INSOMNIA_VERSION=10.3.1
+RUN wget -qL "https://github.com/Kong/insomnia/releases/download/core%40${INSOMNIA_VERSION}/Insomnia.Core-${INSOMNIA_VERSION}.deb" -O /tmp/insomnia.deb \
+    && apt-get update && apt-get install -y --no-install-recommends /tmp/insomnia.deb \
+    && rm /tmp/insomnia.deb && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# MongoDB Compass 1.45.0
+# MongoDB Compass 1.45.0 (sandbox preserved)
+# NOTE: MongoDB does not publish SHA256 checksums for Compass releases.
 # ============================================
-RUN wget -q https://downloads.mongodb.com/compass/mongodb-compass_1.45.0_amd64.deb -O /tmp/compass.deb \
-    && apt-get update && apt-get install -y /tmp/compass.deb \
-    && rm /tmp/compass.deb && rm -rf /var/lib/apt/lists/* \
-    && cat > /usr/local/bin/compass-container << 'EOF'
-#!/bin/bash
-exec /usr/bin/mongodb-compass --no-sandbox --disable-dev-shm-usage --disable-gpu "$@"
-EOF
-RUN chmod +x /usr/local/bin/compass-container \
-    && sed -i 's|^Exec=.*|Exec=/usr/local/bin/compass-container|g' /usr/share/applications/mongodb-compass.desktop || true
+ARG COMPASS_VERSION=1.45.0
+RUN wget -q "https://downloads.mongodb.com/compass/mongodb-compass_${COMPASS_VERSION}_amd64.deb" -O /tmp/compass.deb \
+    && apt-get update && apt-get install -y --no-install-recommends /tmp/compass.deb \
+    && rm /tmp/compass.deb && rm -rf /var/lib/apt/lists/*
 
 # ============================================
 # SQLite Browser
@@ -191,17 +174,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends sqlitebrowser \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Steam Client
-# NOTE: Requires --security-opt seccomp=unconfined --shm-size=1g
+# REMOVED: Steam Client
+# Steam requires --security-opt seccomp=unconfined which is a security risk.
+# If needed, create a separate "gaming" image with explicit security warnings.
 # ============================================
-RUN dpkg --add-architecture i386 \
-    && apt-get update && apt-get install -y \
-        libc6:i386 libstdc++6:i386 libgl1:i386 libx11-6:i386 libxau6:i386 \
-        libxcb1:i386 libxdmcp6:i386 libnss3:i386 libnspr4:i386 \
-        libdbus-1-3:i386 libfreetype6:i386 libgpg-error0:i386 \
-    && wget -q https://cdn.akamai.steamstatic.com/client/installer/steam.deb -O /tmp/steam.deb \
-    && apt-get install -y /tmp/steam.deb || true \
-    && rm -f /tmp/steam.deb && rm -rf /var/lib/apt/lists/*
 
 # ============================================
 # Prism Launcher 9.2 (Minecraft)
@@ -234,38 +210,38 @@ Terminal=false
 EOF
 
 # ============================================
-# Slack 4.39.95
+# Slack 4.47.69 (sandbox preserved, GPG signed)
+# NOTE: Slack uses GPG signatures instead of SHA256 checksums.
+# See: https://slack.com/help/articles/115004809166
 # ============================================
-RUN wget -q https://downloads.slack-edge.com/desktop-releases/linux/x64/4.39.95/slack-desktop-4.39.95-amd64.deb -O /tmp/slack.deb \
-    && apt-get update && apt-get install -y /tmp/slack.deb \
-    && rm /tmp/slack.deb && rm -rf /var/lib/apt/lists/* \
-    && cat > /usr/local/bin/slack-container << 'EOF'
-#!/bin/bash
-exec /usr/bin/slack --no-sandbox --disable-dev-shm-usage --disable-gpu "$@"
-EOF
-RUN chmod +x /usr/local/bin/slack-container \
-    && sed -i 's|^Exec=.*|Exec=/usr/local/bin/slack-container|g' /usr/share/applications/slack.desktop || true
+ARG SLACK_VERSION=4.47.69
+RUN wget -q "https://downloads.slack-edge.com/desktop-releases/linux/x64/${SLACK_VERSION}/slack-desktop-${SLACK_VERSION}-amd64.deb" -O /tmp/slack.deb \
+    && apt-get update && apt-get install -y --no-install-recommends /tmp/slack.deb \
+    && rm /tmp/slack.deb && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# VS Code Extensions
+# Wine (from WineHQ repository for latest stable)
+# ============================================
+RUN dpkg --add-architecture i386 \
+    && mkdir -pm755 /etc/apt/keyrings \
+    && wget -O - https://dl.winehq.org/wine-builds/winehq.key | gpg --dearmor -o /etc/apt/keyrings/winehq-archive.key - \
+    && wget -NP /etc/apt/sources.list.d/ https://dl.winehq.org/wine-builds/ubuntu/dists/noble/winehq-noble.sources \
+    && apt-get update \
+    && apt-get install -y --install-recommends winehq-devel \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# VS Code Extensions (pinned versions recommended)
 # ============================================
 RUN mkdir -p /home/kasm-default-profile/.vscode/extensions \
-    && mkdir -p /home/kasm-default-profile/.config/Code/User \
-    && for ext in ms-python.python rust-lang.rust-analyzer dbaeumer.vscode-eslint \
-                  esbenp.prettier-vscode redhat.java vscjava.vscode-java-pack \
-                  golang.go ms-vscode.cpptools; do \
-        code --no-sandbox \
-            --user-data-dir=/home/kasm-default-profile/.config/Code \
-            --extensions-dir=/home/kasm-default-profile/.vscode/extensions \
-            --install-extension $ext --force || true; \
-    done
+    && mkdir -p /home/kasm-default-profile/.config/Code/User
 
 # ============================================
-# Git configuration
+# Git configuration (secure - no credential storage)
 # ============================================
-RUN git config --system user.name "Anon Anon" \
-    && git config --system user.email "anon@sussy.com" \
-    && git config --system credential.helper store \
+RUN git config --system user.name "Reviewer" \
+    && git config --system user.email "reviewer@local" \
+    && git config --system credential.helper cache --timeout=3600 \
     && git config --system init.defaultBranch main
 
 # ============================================
@@ -305,10 +281,29 @@ user_pref("browser.places.importBookmarksHTML", true);
 EOF
 
 # ============================================
+# Chrome policies (bookmarks + uBlock Origin Lite)
+# ============================================
+RUN mkdir -p /etc/opt/chrome/policies/managed \
+    && cat > /etc/opt/chrome/policies/managed/policy.json << 'EOF'
+{
+    "BookmarkBarEnabled": true,
+    "ManagedBookmarks": [
+        {"toplevel_name": "Bookmarks"},
+        {"name": "Reviews - Hack Club", "url": "https://reviews.hackclub.com"},
+        {"name": "Hack Club", "url": "https://hackclub.com"},
+        {"name": "Flavortown - Hack Club", "url": "https://flavortown.hackclub.com"}
+    ],
+    "ExtensionInstallForcelist": [
+        "ddkjiahejlhfcafbddmgiahcphecmpfh"
+    ]
+}
+EOF
+
+# ============================================
 # Desktop shortcuts
 # ============================================
 RUN mkdir -p /home/kasm-default-profile/Desktop \
-    && for app in firefox google-chrome code insomnia mongodb-compass sqlitebrowser steam prismlauncher slack; do \
+    && for app in firefox google-chrome code insomnia mongodb-compass sqlitebrowser prismlauncher slack; do \
         cp /usr/share/applications/${app}.desktop /home/kasm-default-profile/Desktop/ 2>/dev/null || true; \
     done \
     && chmod +x /home/kasm-default-profile/Desktop/*.desktop 2>/dev/null || true
@@ -319,10 +314,6 @@ RUN mkdir -p /home/kasm-default-profile/Desktop \
 RUN cat > /home/kasm-default-profile/Desktop/README.txt << 'EOF'
 Welcome! This workspace is pre-configured for reviewing projects.
 
-QUICK START
------------
-  git clone <project-url>
-  cd <project-name>
 
 RUNNING PROJECTS BY STACK
 -------------------------
@@ -331,25 +322,22 @@ Python:     python3 -m venv venv && source venv/bin/activate && pip install -r r
 Rust:       cargo build && cargo run
 Java:       ./gradlew build
 Go:         go mod download && go run .
-Docker:     docker compose up (requires host socket mount)
 
 INSTALLED TOOLS
 ---------------
 Browsers:      Firefox, Google Chrome
-IDE:           VS Code (with extensions)
-Languages:     Node.js LTS, Python 3, Rust, Java 21, Go
+IDE:           VS Code
+Languages:     Node.js 22, Python 3, Rust, Java 21, Go
 Databases:     MongoDB Compass, SQLite Browser, Redis CLI
 API Testing:   Insomnia
 Communication: Slack
-Gaming:        Steam*, Prism Launcher
-
-* Steam requires: --security-opt seccomp=unconfined --shm-size=1g
+Gaming:        Prism Launcher
 
 Happy reviewing!
 EOF
 
 # ============================================
-# Fix permissions (must be last before cleanup)
+# Fix permissions
 # ============================================
 RUN chown -R 1000:1000 /home/kasm-default-profile
 
