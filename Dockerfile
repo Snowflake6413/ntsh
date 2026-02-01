@@ -76,7 +76,7 @@ RUN mkdir -p /usr/share/keyrings \
 # Bun runtime
 # ============================================
 RUN curl -fsSL https://bun.sh/install | bash \
-    && mv /root/.bun /opt/bun \
+    && mv /home/kasm-default-profile/.bun /opt/bun \
     && chown -R 1000:1000 /opt/bun
 
 ENV BUN_INSTALL=/opt/bun
@@ -295,6 +295,27 @@ exec /usr/bin/code --no-sandbox "$@"
 EOF
 RUN chmod +x /usr/local/bin/code-sandbox \
     && sed -i 's|Exec=/usr/bin/code|Exec=/usr/local/bin/code-sandbox|g' /usr/share/applications/code.desktop
+
+RUN cat > /usr/local/bin/slack-sandbox << 'EOF'
+#!/bin/bash
+exec /usr/bin/slack --no-sandbox "$@"
+EOF
+RUN chmod +x /usr/local/bin/slack-sandbox \
+    && sed -i 's|Exec=/usr/bin/slack|Exec=/usr/local/bin/slack-sandbox|g' /usr/share/applications/slack.desktop
+
+RUN cat > /usr/local/bin/insomnia-sandbox << 'EOF'
+#!/bin/bash
+exec /usr/bin/insomnia --no-sandbox "$@"
+EOF
+RUN chmod +x /usr/local/bin/insomnia-sandbox \
+    && sed -i 's|Exec=/usr/bin/insomnia|Exec=/usr/local/bin/insomnia-sandbox|g' /usr/share/applications/insomnia.desktop
+
+RUN cat > /usr/local/bin/mongodb-compass-sandbox << 'EOF'
+#!/bin/bash
+exec /usr/bin/mongodb-compass --no-sandbox "$@"
+EOF
+RUN chmod +x /usr/local/bin/mongodb-compass-sandbox \
+    && sed -i 's|Exec=/usr/bin/mongodb-compass|Exec=/usr/local/bin/mongodb-compass-sandbox|g' /usr/share/applications/mongodb-compass.desktop
 
 # ============================================
 # Desktop shortcuts
