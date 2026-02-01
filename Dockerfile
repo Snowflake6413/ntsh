@@ -73,6 +73,16 @@ RUN mkdir -p /usr/share/keyrings \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
+# Bun runtime
+# ============================================
+RUN curl -fsSL https://bun.sh/install | bash \
+    && mv /root/.bun /opt/bun \
+    && chown -R 1000:1000 /opt/bun
+
+ENV BUN_INSTALL=/opt/bun
+ENV PATH=/opt/bun/bin:$PATH
+
+# ============================================
 # Python virtual environment (pinned versions)
 # ============================================
 RUN python3 -m venv /opt/reviewer-venv \
