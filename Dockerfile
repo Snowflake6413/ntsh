@@ -40,11 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && git lfs install --system \
     && rm -rf /var/lib/apt/lists/*
 
-# ============================================
-# Firefox (from Ubuntu repos - more secure than PPA)
-# ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends firefox \
-    && rm -rf /var/lib/apt/lists/*
+
 
 # ============================================
 # Google Chrome (with sandbox preserved)
@@ -246,66 +242,38 @@ RUN git config --system user.name "Reviewer" \
     && git config --system credential.helper cache --timeout=3600 \
     && git config --system init.defaultBranch main
 
-# ============================================
-# Firefox profile with bookmarks
-# ============================================
-RUN mkdir -p /home/kasm-default-profile/.mozilla/firefox/default.profile \
-    && cat > /home/kasm-default-profile/.mozilla/firefox/profiles.ini << 'EOF'
-[Profile0]
-Name=default
-IsRelative=1
-Path=default.profile
-Default=1
 
-[General]
-StartWithLastProfile=1
-EOF
-
-RUN cat > /home/kasm-default-profile/.mozilla/firefox/default.profile/bookmarks.html << 'EOF'
-<!DOCTYPE NETSCAPE-Bookmark-file-1>
-<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
-<TITLE>Bookmarks</TITLE>
-<H1>Bookmarks Menu</H1>
-<DL><p>
-    <DT><H3 PERSONAL_TOOLBAR_FOLDER="true">Bookmarks Toolbar</H3>
-    <DL><p>
-        <DT><A HREF="https://reviews.hackclub.com">Reviews - Hack Club</A>
-        <DT><A HREF="https://hackclub.com">Hack Club</A>
-        <DT><A HREF="https://flavortown.hackclub.com">Flavortown - Hack Club</A>
-    </DL><p>
-</DL><p>
-EOF
-
-RUN cat > /home/kasm-default-profile/.mozilla/firefox/default.profile/user.js << 'EOF'
-user_pref("browser.toolbars.bookmarks.visibility", "always");
-user_pref("browser.bookmarks.file", "/home/kasm-user/.mozilla/firefox/default.profile/bookmarks.html");
-user_pref("browser.places.importBookmarksHTML", true);
-EOF
 
 # ============================================
-# Chrome policies (bookmarks + uBlock Origin Lite)
+# Chrome/Chromium policies (bookmarks + uBlock Origin)
 # ============================================
-RUN mkdir -p /etc/opt/chrome/policies/managed \
+RUN mkdir -p /etc/opt/chrome/policies/managed /etc/chromium/policies/managed \
     && cat > /etc/opt/chrome/policies/managed/policy.json << 'EOF'
 {
     "BookmarkBarEnabled": true,
+    "ShowHomeButton": true,
+    "RestoreOnStartup": 1,
     "ManagedBookmarks": [
         {"toplevel_name": "Bookmarks"},
         {"name": "Reviews - Hack Club", "url": "https://reviews.hackclub.com"},
         {"name": "Hack Club", "url": "https://hackclub.com"},
         {"name": "Flavortown - Hack Club", "url": "https://flavortown.hackclub.com"}
     ],
-    "ExtensionInstallForcelist": [
-        "ddkjiahejlhfcafbddmgiahcphecmpfh"
-    ]
+    "ExtensionSettings": {
+        "ddkjiahejlhfcafbddmgiahcphecmpfh": {
+            "installation_mode": "force_installed",
+            "update_url": "https://clients2.google.com/service/update2/crx"
+        }
+    }
 }
 EOF
+RUN cp /etc/opt/chrome/policies/managed/policy.json /etc/chromium/policies/managed/policy.json
 
 # ============================================
 # Desktop shortcuts
 # ============================================
 RUN mkdir -p /home/kasm-default-profile/Desktop \
-    && for app in firefox google-chrome code insomnia mongodb-compass sqlitebrowser prismlauncher slack; do \
+    && for app in google-chrome code insomnia mongodb-compass sqlitebrowser prismlauncher slack; do \
         cp /usr/share/applications/${app}.desktop /home/kasm-default-profile/Desktop/ 2>/dev/null || true; \
     done \
     && chmod +x /home/kasm-default-profile/Desktop/*.desktop 2>/dev/null || true
@@ -327,7 +295,7 @@ Go:         go mod download && go run .
 
 INSTALLED TOOLS
 ---------------
-Browsers:      Firefox, Google Chrome
+Browsers:      Google Chrome
 IDE:           VS Code
 Languages:     Node.js 22, Python 3, Rust, Java 21, Go
 Databases:     MongoDB Compass, SQLite Browser, Redis CLI
@@ -336,6 +304,32 @@ Communication: Slack
 Gaming:        Prism Launcher
 
 Happy reviewing!
+EOF
+
+# ============================================
+# Passwordless sudo for kasm-user
+# ============================================
+RUN echo "kasm-user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# ============================================
+# Custom Wallpaper
+# ============================================
+RUN mkdir -p /home/kasm-default-profile/.config/xfce4/xfconf/xfce-perchannel-xml \
+    && wget -q "https://parakeet.yaoi.tech/thecook.jpg" -O /usr/share/backgrounds/custom-wallpaper.jpg \
+    && cat > /home/kasm-default-profile/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="screen0" type="empty">
+      <property name="monitorVNC-0" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="last-image" type="string" value="/usr/share/backgrounds/custom-wallpaper.jpg"/>
+          <property name="image-style" type="int" value="5"/>
+        </property>
+      </property>
+    </property>
+  </property>
+</channel>
 EOF
 
 # ============================================
