@@ -270,6 +270,23 @@ EOF
 RUN cp /etc/opt/chrome/policies/managed/policy.json /etc/chromium/policies/managed/policy.json
 
 # ============================================
+# Force --no-sandbox for Chrome and VS Code
+# ============================================
+RUN cat > /usr/local/bin/google-chrome-sandbox << 'EOF'
+#!/bin/bash
+exec /usr/bin/google-chrome-stable --no-sandbox "$@"
+EOF
+RUN chmod +x /usr/local/bin/google-chrome-sandbox \
+    && sed -i 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/local/bin/google-chrome-sandbox|g' /usr/share/applications/google-chrome.desktop
+
+RUN cat > /usr/local/bin/code-sandbox << 'EOF'
+#!/bin/bash
+exec /usr/bin/code --no-sandbox "$@"
+EOF
+RUN chmod +x /usr/local/bin/code-sandbox \
+    && sed -i 's|Exec=/usr/bin/code|Exec=/usr/local/bin/code-sandbox|g' /usr/share/applications/code.desktop
+
+# ============================================
 # Desktop shortcuts
 # ============================================
 RUN mkdir -p /home/kasm-default-profile/Desktop \
