@@ -280,42 +280,68 @@ EOF
 RUN cp /etc/opt/chrome/policies/managed/policy.json /etc/chromium/policies/managed/policy.json
 
 # ============================================
-# Force --no-sandbox for Chrome and VS Code
+# Wrap Electron apps with Kasm seccomp detection pattern
 # ============================================
-RUN cat > /usr/local/bin/google-chrome-sandbox << 'EOF'
-#!/bin/bash
-exec /usr/bin/google-chrome-stable --no-sandbox "$@"
-EOF
-RUN chmod +x /usr/local/bin/google-chrome-sandbox \
-    && sed -i 's|Exec=/usr/bin/google-chrome-stable|Exec=/usr/local/bin/google-chrome-sandbox|g' /usr/share/applications/google-chrome.desktop
 
-RUN cat > /usr/local/bin/code-sandbox << 'EOF'
+# Chrome
+RUN mv /usr/bin/google-chrome-stable /usr/bin/google-chrome-stable-orig \
+    && cat > /usr/bin/google-chrome-stable << 'EOF'
 #!/bin/bash
-exec /usr/bin/code --no-sandbox "$@"
+if [[ $(awk '/Seccomp:/ {print $2}' /proc/1/status) == "0" ]]; then
+  /usr/bin/google-chrome-stable-orig "$@"
+else
+  /usr/bin/google-chrome-stable-orig --no-sandbox "$@"
+fi
 EOF
-RUN chmod +x /usr/local/bin/code-sandbox \
-    && sed -i 's|Exec=/usr/bin/code|Exec=/usr/local/bin/code-sandbox|g' /usr/share/applications/code.desktop
+RUN chmod +x /usr/bin/google-chrome-stable
 
-RUN cat > /usr/local/bin/slack-sandbox << 'EOF'
+# VS Code (real binary is /usr/share/code/code)
+RUN mv /usr/share/code/code /usr/share/code/code-orig \
+    && cat > /usr/share/code/code << 'EOF'
 #!/bin/bash
-exec /usr/bin/slack --no-sandbox "$@"
+if [[ $(awk '/Seccomp:/ {print $2}' /proc/1/status) == "0" ]]; then
+  /usr/share/code/code-orig "$@"
+else
+  /usr/share/code/code-orig --no-sandbox "$@"
+fi
 EOF
-RUN chmod +x /usr/local/bin/slack-sandbox \
-    && sed -i 's|Exec=/usr/bin/slack|Exec=/usr/local/bin/slack-sandbox|g' /usr/share/applications/slack.desktop
+RUN chmod +x /usr/share/code/code
 
-RUN cat > /usr/local/bin/insomnia-sandbox << 'EOF'
+# Slack
+RUN mv /usr/bin/slack /usr/bin/slack-orig \
+    && cat > /usr/bin/slack << 'EOF'
 #!/bin/bash
-exec /usr/bin/insomnia --no-sandbox "$@"
+if [[ $(awk '/Seccomp:/ {print $2}' /proc/1/status) == "0" ]]; then
+  /usr/bin/slack-orig "$@"
+else
+  /usr/bin/slack-orig --no-sandbox "$@"
+fi
 EOF
-RUN chmod +x /usr/local/bin/insomnia-sandbox \
-    && sed -i 's|Exec=/usr/bin/insomnia|Exec=/usr/local/bin/insomnia-sandbox|g' /usr/share/applications/insomnia.desktop
+RUN chmod +x /usr/bin/slack
 
-RUN cat > /usr/local/bin/mongodb-compass-sandbox << 'EOF'
+# Insomnia (real binary is /opt/Insomnia/insomnia)
+RUN mv /opt/Insomnia/insomnia /opt/Insomnia/insomnia-orig \
+    && cat > /opt/Insomnia/insomnia << 'EOF'
 #!/bin/bash
-exec /usr/bin/mongodb-compass --no-sandbox "$@"
+if [[ $(awk '/Seccomp:/ {print $2}' /proc/1/status) == "0" ]]; then
+  /opt/Insomnia/insomnia-orig "$@"
+else
+  /opt/Insomnia/insomnia-orig --no-sandbox "$@"
+fi
 EOF
-RUN chmod +x /usr/local/bin/mongodb-compass-sandbox \
-    && sed -i 's|Exec=/usr/bin/mongodb-compass|Exec=/usr/local/bin/mongodb-compass-sandbox|g' /usr/share/applications/mongodb-compass.desktop
+RUN chmod +x /opt/Insomnia/insomnia
+
+# MongoDB Compass
+RUN mv /usr/bin/mongodb-compass /usr/bin/mongodb-compass-orig \
+    && cat > /usr/bin/mongodb-compass << 'EOF'
+#!/bin/bash
+if [[ $(awk '/Seccomp:/ {print $2}' /proc/1/status) == "0" ]]; then
+  /usr/bin/mongodb-compass-orig "$@"
+else
+  /usr/bin/mongodb-compass-orig --no-sandbox "$@"
+fi
+EOF
+RUN chmod +x /usr/bin/mongodb-compass
 
 # ============================================
 # Desktop shortcuts
